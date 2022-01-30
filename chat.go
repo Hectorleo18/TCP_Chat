@@ -38,13 +38,20 @@ func writeInput(conn *net.TCPConn){
 		command := strings.Split(text," ")
 		//Revisar si el comando es /msg para leer el archivo.
 		if command[0] == "/file" {
-			fileInfo, err := os.Stat(command[1])
+			//Eliminar el primer elemento del sice
+			copy(command[0:],command[1:])
+			command[len(command)-1] = ""
+			command = command[:len(command)-1]
+			//Eliminar espacios
+			completeCommand := strings.Join(command," ")
+			completeCommand = strings.Trim(completeCommand, "\r\n")
+			fileInfo, err := os.Stat(completeCommand)
 			if err != nil {
 				fmt.Println(err)
 				return
 			}
 			fileName := fileInfo.Name()
-			fileSize := fileInfo.Size()
+			// fileSize := fileInfo.Size()
 			fmt.Println("Nombre: "+fileName)
 			conn.Write([]byte("/file "+fileName+" "))//<----Ojo aquí
 			// buf := make([]byte, 2048)
@@ -56,10 +63,11 @@ func writeInput(conn *net.TCPConn){
 			// revData := string(buf[:n])
 			// if revData == "ok" {
 				//Send file data
-			SendFile(command[1], fileSize, conn)
+			SendFile(completeCommand, conn)
 			// }
 		}else{
 			//Si el usuario manda otro comando que no sea file
+			// text = strings.Trim(text, "\r\n")
 			err = writeMsg(conn, text)
 			if err != nil {
 				log.Println(err)
@@ -88,33 +96,37 @@ func printOutput(conn *net.TCPConn) {
 }
 
 //Send a file to the server
-func SendFile(filePath string, fileSize int64, conn net.Conn) {
-	f, err := os.Open(filePath)
+func SendFile(filePath string, conn net.Conn) {
+	f, err := os.ReadFile(filePath)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	defer f.Close()
-	var count int64
-	for {
-		buf := make([]byte, 2048)
-		//Read file content
-		n, err := f.Read(buf)
-		if err != nil && io.EOF == err {
-			fmt.Println("File Transfer")
-			//Tell the server end file reception
-			// conn.Write([]byte("finish \n"))
-			return
-		}
-		//Send to the server
-		conn.Write(buf[:n])
+	// defer f.Close()
+	// var count int64
+	text := string(f[:])
+	text = strings.ReplaceAll(text,"\n","HectorLeoRodriguez")
+	conn.Write([]byte(text))
+	conn.Write([]byte("\n"))
+	// for {
+	// 	buf := make([]byte, 2048)
+	// 	//Read file content
+	// 	n, err := f.Read(buf)
+	// 	if err != nil && io.EOF == err {
+	// 		fmt.Println("File Transfer")
+	// 		//Tell the server end file reception
+	// 		conn.Write([]byte(" finish \n"))
+	// 		return
+	// 	}
+	// 	//Send to the server
+	// 	conn.Write(buf[:n])
 
-		count += int64(n)
-		sendPercent := float64(count) / float64(fileSize) * 100
-		value := fmt.Sprintf("%.2f", sendPercent)
-		//Print upload progress
-		fmt.Println("Upload:" + value + "%")
-	}
+	// 	count += int64(n)
+	// 	sendPercent := float64(count) / float64(fileSize) * 100
+	// 	value := fmt.Sprintf("%.2f", sendPercent)
+	// 	//Print upload progress
+	// 	fmt.Println("Upload:" + value + "%")
+	// }
 }
 
 func writeMsg(conn net.Conn, msg string) error {
