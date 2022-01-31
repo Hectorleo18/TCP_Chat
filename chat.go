@@ -8,8 +8,7 @@ import (
 	"strings"
 	"log"
 	"bufio"
-	"bytes"
-	"encoding/binary"
+	"errors"
 )
 
 func main() {
@@ -28,6 +27,9 @@ func main() {
 	writeInput(conn)
 }
 
+/*
+	Escribir un comando/mensaje
+*/
 func writeInput(conn *net.TCPConn){
 	reader := bufio.NewReader(os.Stdin)
 	for {
@@ -36,13 +38,13 @@ func writeInput(conn *net.TCPConn){
 			log.Fatal(err)
 		}
 		command := strings.Split(text," ")
-		//Revisar si el comando es /msg para leer el archivo.
+		//Revisar si el comando es /file para leer el archivo.
 		if command[0] == "/file" {
 			//Eliminar el primer elemento del sice
 			copy(command[0:],command[1:])
 			command[len(command)-1] = ""
 			command = command[:len(command)-1]
-			//Eliminar espacios
+			//Se convierte en cadena y se elimina el salto de línea
 			completeCommand := strings.Join(command," ")
 			completeCommand = strings.Trim(completeCommand, "\r\n")
 			fileInfo, err := os.Stat(completeCommand)
@@ -50,40 +52,30 @@ func writeInput(conn *net.TCPConn){
 				fmt.Println(err)
 				return
 			}
+			//Se obtiene el nombre del archivo
 			fileName := fileInfo.Name()
-			// fileSize := fileInfo.Size()
 			fmt.Println("Nombre: "+fileName)
-			conn.Write([]byte("/file "+fileName+" "))//<----Ojo aquí
-			// buf := make([]byte, 2048)
-			// n, err := conn.Read(buf)
-			// if err != nil {
-			// 	fmt.Println(err)
-			// 	return
-			// }
-			// revData := string(buf[:n])
-			// if revData == "ok" {
-				//Send file data
+			//Se envía el commando y el nombre del archivo
+			conn.Write([]byte("/file "+fileName+" "))
 			SendFile(completeCommand, conn)
-			// }
 		}else{
 			//Si el usuario manda otro comando que no sea file
-			// text = strings.Trim(text, "\r\n")
 			err = writeMsg(conn, text)
 			if err != nil {
 				log.Println(err)
 			}
 		}
-
-		//https://github.com/pplam/tcp-file-transfer
 	}
 }
 
+/*
+	Imprimir el mensaje recibido
+*/
 func printOutput(conn *net.TCPConn) {
 	for {
 		msg, err := readMsg(conn)
-		// Receiving EOF means that the connection has been closed
+		// Si se recibe EOF la conección fue cerrada
 		if err == io.EOF {
-			// Close conn and exit
 			conn.Close()
 			fmt.Println("Connection Closed. Bye bye.")
 			os.Exit(0)
@@ -95,42 +87,29 @@ func printOutput(conn *net.TCPConn) {
 	}
 }
 
-//Send a file to the server
+/*
+	Envía un archivo al servidor
+*/
 func SendFile(filePath string, conn net.Conn) {
+	//Se obtiene el contenido del archivo
 	f, err := os.ReadFile(filePath)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	// defer f.Close()
-	// var count int64
+	//Se convierte el contenido en texto
 	text := string(f[:])
+	//Se reemplaza el salto de línea por una cadena.
 	text = strings.ReplaceAll(text,"\n","HectorLeoRodriguez")
+	//Se manda el archivo al servidor
 	conn.Write([]byte(text))
 	conn.Write([]byte("\n"))
-	// for {
-	// 	buf := make([]byte, 2048)
-	// 	//Read file content
-	// 	n, err := f.Read(buf)
-	// 	if err != nil && io.EOF == err {
-	// 		fmt.Println("File Transfer")
-	// 		//Tell the server end file reception
-	// 		conn.Write([]byte(" finish \n"))
-	// 		return
-	// 	}
-	// 	//Send to the server
-	// 	conn.Write(buf[:n])
-
-	// 	count += int64(n)
-	// 	sendPercent := float64(count) / float64(fileSize) * 100
-	// 	value := fmt.Sprintf("%.2f", sendPercent)
-	// 	//Print upload progress
-	// 	fmt.Println("Upload:" + value + "%")
-	// }
 }
 
+/*
+	Escribe un mensaje de texto en el servidor
+*/
 func writeMsg(conn net.Conn, msg string) error {
-	// Send the message
 	_, err := conn.Write([]byte(msg))
 	if err != nil {
 		return err
@@ -138,37 +117,57 @@ func writeMsg(conn net.Conn, msg string) error {
 	return nil
 }
 
+/*
+	Lee la información proveniente del servidor
+*/
 func readMsg(conn net.Conn) (string, error) {
 	reader := bufio.NewReader(conn)
+	//Variables a ser retornadas
 	var msg string
 	var err error
+	//Se lee la primer palabra enviada desde el servidor
 	typeMsg, err := reader.ReadString(' ')
 	if err != nil {
 		fmt.Println(err)
 	}
-	if typeMsg == "file"{
-
-	}else{
+	//Si se envía un archivo
+	if typeMsg == "file "{
+		//Se lee hasta que se encuentra un salto de línea
 		data, err := reader.ReadString('\n')
-		msg = data
+		data = strings.Trim(data, "\r\n")
+		//Se convierte la cadena en []string
+		args := strings.Split(data, " ")
+		//Se crea el archivo en blanco
+		f, err := os.Create(args[2])
 		if err != nil {
-			msg = ""
-			fmt.Println(err)
+			return "", err
+		}
+		//Se cierra el archivo en caso de que la aplicación crashee
+		defer f.Close()
+		//Se crea una cadena sin las primeras 3 palabras
+		text := strings.Join(args[3:], " ")
+		//Se reemplaza la cadena con salto de línea
+		text = strings.ReplaceAll(text, "HectorLeoRodriguez", "\n")
+		//Se escribe la información en el archivo
+		srcFile := []byte(text)
+		f.Write(srcFile)
+		f.Close()
+		msg = strings.Join(args[:3]," ")
+	}else{
+		//Si se envía un mensaje de texto
+		if typeMsg == "msg "{
+			//Se lee hasta el salto de línea
+			data, err := reader.ReadString('\n')
+			msg = data
+			if err != nil {
+				msg = ""
+				fmt.Println(err)
+			}
+		}else{
+			//Si se recibe un formato distinto
+			msg = "Formato no definido."
+			err = errors.New("not defined format")
 		}
 	}
 	return msg, err
-}
-
-func fromBytes(b []byte) (int32, error) {
-	buf := bytes.NewReader(b)
-	var result int32
-	err := binary.Read(buf, binary.BigEndian, &result)
-	return result, err
-}
-
-// To convert an int32 to a 4 byte Big Endian binary format
-func toBytes(i int32) ([]byte, error) {
-	buf := new(bytes.Buffer)
-	err := binary.Write(buf, binary.BigEndian, i)
-	return buf.Bytes(), err
 }
