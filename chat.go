@@ -50,7 +50,7 @@ func writeInput(conn *net.TCPConn){
 			fileInfo, err := os.Stat(completeCommand)
 			if err != nil {
 				fmt.Println(err)
-				return
+				continue
 			}
 			//Se obtiene el nombre del archivo
 			fileName := fileInfo.Name()
@@ -63,6 +63,7 @@ func writeInput(conn *net.TCPConn){
 			err = writeMsg(conn, text)
 			if err != nil {
 				log.Println(err)
+				continue
 			}
 		}
 	}
@@ -81,7 +82,8 @@ func printOutput(conn *net.TCPConn) {
 			os.Exit(0)
 		}
 		if err != nil {
-			log.Fatal(err)
+			fmt.Println(err)
+			continue
 		}
 		fmt.Println(msg)
 	}
@@ -95,7 +97,7 @@ func SendFile(filePath string, conn net.Conn) {
 	f, err := os.ReadFile(filePath)
 	if err != nil {
 		fmt.Println(err)
-		return
+		continue
 	}
 	//Se convierte el contenido en texto
 	text := string(f[:])
@@ -129,6 +131,7 @@ func readMsg(conn net.Conn) (string, error) {
 	typeMsg, err := reader.ReadString(' ')
 	if err != nil {
 		fmt.Println(err)
+		return "", err
 	}
 	//Si se envía un archivo
 	if typeMsg == "file "{
