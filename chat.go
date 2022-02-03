@@ -1,14 +1,20 @@
 package main
 
 import (
+	"bufio"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"os"
 	"strings"
-	"log"
-	"bufio"
-	"errors"
+)
+
+var (
+	errNotDefinedFormat = errors.New("not defined format")
+
+	msgNotDefinedFormat = "Formato no definido."
 )
 
 func main() {
@@ -17,7 +23,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Conectar al servidor TCP
+	// Connect to the TCP server
 	conn, err := net.DialTCP("tcp", nil, tcpAddr)
 	if err != nil {
 		log.Fatal(err)
@@ -27,39 +33,37 @@ func main() {
 	writeInput(conn)
 }
 
-/*
-	Escribir un comando/mensaje
-*/
-func writeInput(conn *net.TCPConn){
+// writeInput write a command or message to the server
+func writeInput(conn *net.TCPConn) {
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		text, err := reader.ReadString('\n')
 		if err != nil {
 			log.Fatal(err)
 		}
-		command := strings.Split(text," ")
-		//Revisar si el comando es /file para leer el archivo.
+		command := strings.Split(text, " ")
+		//Check if the command is "/file"
 		if command[0] == "/file" {
-			//Eliminar el primer elemento del sice
-			copy(command[0:],command[1:])
+			//Delete the first element of the slice
+			copy(command[0:], command[1:])
 			command[len(command)-1] = ""
 			command = command[:len(command)-1]
-			//Se convierte en cadena y se elimina el salto de línea
-			completeCommand := strings.Join(command," ")
+			//Convert to string and delete the line break
+			completeCommand := strings.Join(command, " ")
 			completeCommand = strings.Trim(completeCommand, "\r\n")
 			fileInfo, err := os.Stat(completeCommand)
 			if err != nil {
 				fmt.Println(err)
 				continue
 			}
-			//Se obtiene el nombre del archivo
+			//get the name of the file
 			fileName := fileInfo.Name()
-			fmt.Println("Nombre: "+fileName)
-			//Se envía el commando y el nombre del archivo
-			conn.Write([]byte("/file "+fileName+" "))
+			fmt.Println("Nombre: " + fileName)
+			//Send the command and the file name
+			conn.Write([]byte("/file " + fileName + " "))
 			SendFile(completeCommand, conn)
-		}else{
-			//Si el usuario manda otro comando que no sea file
+		} else {
+			//If the command isn't "/file"
 			err = writeMsg(conn, text)
 			if err != nil {
 				log.Println(err)
@@ -69,13 +73,11 @@ func writeInput(conn *net.TCPConn){
 	}
 }
 
-/*
-	Imprimir el mensaje recibido
-*/
+// printOutput prints the message received from the server
 func printOutput(conn *net.TCPConn) {
 	for {
 		msg, err := readMsg(conn)
-		// Si se recibe EOF la conección fue cerrada
+		// if the error is EOF the connection is over
 		if err == io.EOF {
 			conn.Close()
 			fmt.Println("Connection Closed. Bye bye.")
@@ -89,28 +91,24 @@ func printOutput(conn *net.TCPConn) {
 	}
 }
 
-/*
-	Envía un archivo al servidor
-*/
+// SendFile sends file to the server
 func SendFile(filePath string, conn net.Conn) {
-	//Se obtiene el contenido del archivo
+	//gets the content of the file
 	f, err := os.ReadFile(filePath)
 	if err != nil {
 		fmt.Println(err)
-		continue
+		return
 	}
-	//Se convierte el contenido en texto
+	//Turn the file to string
 	text := string(f[:])
-	//Se reemplaza el salto de línea por una cadena.
-	text = strings.ReplaceAll(text,"\n","HectorLeoRodriguez")
-	//Se manda el archivo al servidor
+	//Replace "\n" with another text
+	text = strings.ReplaceAll(text, "\n", "HectorLeoRodriguez")
+	//Send the file to the server
 	conn.Write([]byte(text))
 	conn.Write([]byte("\n"))
 }
 
-/*
-	Escribe un mensaje de texto en el servidor
-*/
+//writeMsg writes a text message to the server
 func writeMsg(conn net.Conn, msg string) error {
 	_, err := conn.Write([]byte(msg))
 	if err != nil {
@@ -119,57 +117,57 @@ func writeMsg(conn net.Conn, msg string) error {
 	return nil
 }
 
-/*
-	Lee la información proveniente del servidor
-*/
+//readMsg reads the message from the server
 func readMsg(conn net.Conn) (string, error) {
 	reader := bufio.NewReader(conn)
-	//Variables a ser retornadas
+	//Variables to return
 	var msg string
 	var err error
-	//Se lee la primer palabra enviada desde el servidor
+	//Read the first word from the server
 	typeMsg, err := reader.ReadString(' ')
 	if err != nil {
 		fmt.Println(err)
 		return "", err
 	}
-	//Si se envía un archivo
-	if typeMsg == "file "{
-		//Se lee hasta que se encuentra un salto de línea
+	//if the word is "file"
+	if typeMsg == "file " {
+		//Read the server until finds a line break
 		data, err := reader.ReadString('\n')
+		if err != nil {
+			return "", err
+		}
 		data = strings.Trim(data, "\r\n")
-		//Se convierte la cadena en []string
+		//Convert the string in []string
 		args := strings.Split(data, " ")
-		//Se crea el archivo en blanco
+		//Create an empty file
 		f, err := os.Create(args[2])
 		if err != nil {
 			return "", err
 		}
-		//Se cierra el archivo en caso de que la aplicación crashee
 		defer f.Close()
-		//Se crea una cadena sin las primeras 3 palabras
+		//Create a string without the first 3 words
 		text := strings.Join(args[3:], " ")
-		//Se reemplaza la cadena con salto de línea
+		//Replace the string with line break
 		text = strings.ReplaceAll(text, "HectorLeoRodriguez", "\n")
-		//Se escribe la información en el archivo
+		//Write the information in the file
 		srcFile := []byte(text)
 		f.Write(srcFile)
 		f.Close()
-		msg = strings.Join(args[:3]," ")
-	}else{
-		//Si se envía un mensaje de texto
-		if typeMsg == "msg "{
-			//Se lee hasta el salto de línea
+		msg = strings.Join(args[:3], " ")
+	} else {
+		//If the first word is "msg"
+		if typeMsg == "msg " {
+			//Read until the line break
 			data, err := reader.ReadString('\n')
 			msg = data
 			if err != nil {
 				msg = ""
 				fmt.Println(err)
 			}
-		}else{
-			//Si se recibe un formato distinto
-			msg = "Formato no definido."
-			err = errors.New("not defined format")
+		} else {
+			//If the first word is anther one
+			msg = msgNotDefinedFormat
+			err = errNotDefinedFormat
 		}
 	}
 	return msg, err
